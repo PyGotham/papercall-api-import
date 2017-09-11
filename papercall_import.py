@@ -6,8 +6,8 @@ from requests import get
 from slugify import slugify
 from xlwt import easyxf, Workbook
 
-# Possible proposal states
-PROPOSAL_STATES = ('submitted', 'accepted', 'rejected', 'waitlist')
+# Possible proposal states that we need
+PROPOSAL_STATES = ('accepted',)
 
 # Style for the Spreadsheet headers
 HEADER_STYLE = easyxf(
@@ -20,7 +20,7 @@ def get_api_key():
     """
     Get the user's API key
     """
-    print('Your DjangoCon PaperCall API Key can be found here: https://www.papercall.io/events/316/apidocs')
+    print('Your PyGotham PaperCall API Key can be found here: https://www.papercall.io/events/534/apidocs')
     api_key = input('Please enter your PaperCall event API Key: ')
     if len(api_key) != 32:
         raise ValueError('Error: API Key must be 32 characters long.')
@@ -150,66 +150,33 @@ def create_yaml(api_key, yaml_dir):
         )
 
         for proposal in r.json():
-            talk_format = None
-            if proposal['talk']['talk_format'][0:4].lower() == "talk":
-                talk_format = "talk"
-            elif proposal['talk']['talk_format'][0:4].lower() == "tuto":
-                talk_format = "tutorial"
+            talk_title_slug = slugify(proposal['talk']['title'])
 
-            if talk_format:
-                talk_title_slug = slugify(proposal['talk']['title'])
+            post = frontmatter.loads(proposal['talk']['description'])
+            post['title'] = proposal['talk']['title']
+            post['level'] = proposal['talk']['audience_level']
+            post['abstract'] = proposal['talk']['abstract']
 
-                post = frontmatter.loads(proposal['talk']['description'])
-                post['abstract'] = proposal['talk']['abstract']
-                post['category'] = talk_format
-                post['title'] = proposal['talk']['title']
-                post['difficulty'] = proposal['talk']['audience_level']
-                post['permalink'] = '/{}/{}/'.format(
-                    talk_format,
+            presenter = proposal['profile']['name']
+            if '/' in presenter:
+                presenter = presenter.split('/')
+            elif ' and ' in presenter:
+                presenter = presenter.split(' and ')
+            elif ', ' in presenter:
+                presenter = presenter.split(', ')
+            post['presenter'] = presenter
+
+            with open(
+                '{}/{}/{}.md'.format(
+                    yaml_dir,
+                    proposal_state,
                     talk_title_slug,
-                )
-                post['layout'] = 'session-details'
-                post['accepted'] = True if proposal_state == 'accepted' else False
-                post['published'] = True
-                post['sitemap'] = True
+                ),
+                'wb'
+            ) as file_to_write:
+                frontmatter.dump(post, file_to_write)
 
-                # TODO: Scheduling info...
-                post['date'] = '2016-07-18 09:00'
-                post['room'] = ''
-                post['track'] = ''
-
-                # TODO: Determine if we still need summary (I don't think we do)
-                post['summary'] = ''
-
-                # todo: refactor template layout to support multiple authors
-                post['presenters'] = [
-                    {
-                        'name': proposal['profile']['name'],
-                        'bio': proposal['profile']['bio'],
-                        'company': proposal['profile']['company'],
-                        'photo_url': '',
-                        'github': '',
-                        'twitter': proposal['profile']['twitter'],
-                        'website': proposal['profile']['url'],
-                    },
-                ]
-
-                # post conference info
-                post['video_url'] = ''
-                post['slides_url'] = ''
-
-                with open(
-                    '{}/{}/{}-{}.md'.format(
-                        yaml_dir,
-                        proposal_state,
-                        talk_format,
-                        talk_title_slug,
-                    ),
-                    'wb'
-                ) as file_to_write:
-                    frontmatter.dump(post, file_to_write)
-
-                print(frontmatter.dumps(post))
+            print(frontmatter.dumps(post))
 
 
 def main():
