@@ -1,7 +1,7 @@
-import frontmatter
+from os import makedirs
 
 from envparse import env
-from os import makedirs
+import frontmatter
 from requests import get
 from slugify import slugify
 from xlwt import easyxf, Workbook
@@ -141,6 +141,11 @@ def create_yaml(api_key, yaml_dir):
                 proposal_state,
             ), exist_ok=True,
         )
+        makedirs(
+            '{}/speakers'.format(
+                yaml_dir,
+            ), exist_ok=True,
+        )
 
         r = get(
             'https://www.papercall.io/api/v1/submissions?_token={0}&state={1}&per_page=1000'.format(
@@ -149,6 +154,8 @@ def create_yaml(api_key, yaml_dir):
             )
         )
 
+        speakers = {}
+
         for proposal in r.json():
             talk_title_slug = slugify(proposal['talk']['title'])
 
@@ -156,15 +163,29 @@ def create_yaml(api_key, yaml_dir):
             post['title'] = proposal['talk']['title']
             post['level'] = proposal['talk']['audience_level']
             post['abstract'] = proposal['talk']['abstract']
+            post['speakers'] = []
 
-            presenter = proposal['profile']['name']
-            if '/' in presenter:
-                presenter = presenter.split('/')
-            elif ' and ' in presenter:
-                presenter = presenter.split(' and ')
-            elif ', ' in presenter:
-                presenter = presenter.split(', ')
-            post['presenter'] = presenter
+            speaker_name = proposal['profile']['name']
+            if '/' in speaker_name:
+                speaker_name = speaker_name.split('/')
+            elif ' and ' in speaker_name:
+                speaker_name = speaker_name.split(' and ')
+            elif ',' in speaker_name and speaker_name[-5:] != ', MBA':
+                speaker_name = speaker_name.split(',')
+            else:
+                speaker_name = [speaker_name]
+
+            for name in map(str.strip, speaker_name):
+                speaker_slug = slugify(name)
+
+                if speaker_slug not in speakers:
+                    speakers[speaker_slug] = frontmatter.loads(
+                        proposal['profile']['bio'])
+                    speakers[speaker_slug]['name'] = name
+                    speakers[speaker_slug]['talks'] = []
+
+                post['speakers'].append(name)
+                speakers[speaker_slug]['talks'].append(post['title'])
 
             with open(
                 '{}/{}/{}.md'.format(
@@ -177,6 +198,15 @@ def create_yaml(api_key, yaml_dir):
                 frontmatter.dump(post, file_to_write)
 
             print(frontmatter.dumps(post))
+
+        for speaker_slug, speaker in speakers.items():
+            with open(
+                '{}/speakers/{}.md'.format(yaml_dir, speaker_slug),
+                'wb',
+            ) as file_to_write:
+                frontmatter.dump(speaker, file_to_write)
+
+            print(frontmatter.dumps(speaker))
 
 
 def main():
