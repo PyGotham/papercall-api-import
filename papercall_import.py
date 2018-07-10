@@ -1,4 +1,5 @@
 from os import makedirs
+from os.path import exists
 
 from envparse import env
 import frontmatter
@@ -132,21 +133,13 @@ def create_excel(api_key, xls_file):
     wb.save(xls_file)
 
 
-def create_yaml(api_key, yaml_dir):
-    for proposal_state in PROPOSAL_STATES:
-        # Create the directories, if they don't exist.
-        makedirs(
-            '{}/{}'.format(
-                yaml_dir,
-                proposal_state,
-            ), exist_ok=True,
-        )
-        makedirs(
-            '{}/speakers'.format(
-                yaml_dir,
-            ), exist_ok=True,
-        )
+def create_yaml(api_key, talks_dir, speakers_dir):
+    if not exists(talks_dir):
+        makedirs(talks_dir)
+    if not exists(speakers_dir):
+        makedirs(speakers_dir)
 
+    for proposal_state in PROPOSAL_STATES:
         r = get(
             'https://www.papercall.io/api/v1/submissions?_token={0}&state={1}&per_page=1000'.format(
                 api_key,
@@ -160,6 +153,7 @@ def create_yaml(api_key, yaml_dir):
             talk_title_slug = slugify(proposal['talk']['title'])
 
             post = frontmatter.loads(proposal['talk']['description'])
+            post['type'] = 'talk'
             post['title'] = proposal['talk']['title']
             post['level'] = proposal['talk']['audience_level']
             post['abstract'] = proposal['talk']['abstract']
@@ -187,26 +181,18 @@ def create_yaml(api_key, yaml_dir):
                 post['speakers'].append(name)
                 speakers[speaker_slug]['talks'].append(post['title'])
 
-            with open(
-                '{}/{}/{}.md'.format(
-                    yaml_dir,
-                    proposal_state,
-                    talk_title_slug,
-                ),
-                'wb'
-            ) as file_to_write:
+            talk_filename = '{}/{}.md'.format(talks_dir, talk_title_slug)
+            with open(talk_filename, 'wb') as file_to_write:
                 frontmatter.dump(post, file_to_write)
 
-            print(frontmatter.dumps(post))
+            print('saved {!r}'.format(talk_filename))
 
         for speaker_slug, speaker in speakers.items():
-            with open(
-                '{}/speakers/{}.md'.format(yaml_dir, speaker_slug),
-                'wb',
-            ) as file_to_write:
+            speaker_filename = '{}/{}.md'.format(speakers_dir, speaker_slug)
+            with open(speaker_filename, 'wb') as file_to_write:
                 frontmatter.dump(speaker, file_to_write)
 
-            print(frontmatter.dumps(speaker))
+            print('saved {!r}'.format(speaker_filename))
 
 
 def main():
@@ -220,8 +206,9 @@ def main():
         xls_file = get_filename('Filename to write [djangoconus.xls]: ', 'djangoconus.xls')
         create_excel(api_key, xls_file)
     elif file_format == "2":
-        yaml_dir = get_filename('Directory to write to [yaml]: ', 'yaml')
-        create_yaml(api_key, yaml_dir)
+        talks_dir = get_filename('Directory to write talks to [talks]: ', 'talks')
+        speakers_dir = get_filename('Directory to write speakers to [speakers]: ', 'speakers')
+        create_yaml(api_key, talks_dir, speakers_dir)
 
 
 if __name__ == "__main__":
